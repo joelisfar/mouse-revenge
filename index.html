@@ -39,7 +39,34 @@
     #dwellreq { flex: 0 0 auto; font-size: 14px; opacity: 0.85; font-variant-numeric: tabular-nums; }
 
     /* === SQUARE === */
-    /* (added in Task 3) */
+    #square {
+      position: absolute;
+      width: 80px;
+      height: 80px;
+      background: #ff5b5b;
+      border-radius: 6px;
+      box-shadow: 0 4px 20px rgba(255, 91, 91, 0.3);
+      transition: filter 80ms linear;
+      pointer-events: none; /* hover detection is purely cursor-coords based */
+      overflow: hidden;
+    }
+    #square.hovering { filter: brightness(1.2); }
+    #square > #fill {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 0;
+      background: rgba(255, 255, 255, 0.28);
+    }
+    #subtitle {
+      position: fixed;
+      bottom: 28px;
+      left: 0; right: 0;
+      text-align: center;
+      font-size: 14px;
+      color: #aaa;
+    }
 
     /* === OVERLAY === */
     /* (added in Task 6) */
@@ -57,7 +84,10 @@
   </div>
 
   <!-- === PLAYFIELD === -->
-  <div id="playfield"></div>
+  <div id="playfield">
+    <div id="square"><div id="fill"></div></div>
+    <div id="subtitle">Hover the square to start. Don't let it escape for more than 2 seconds total.</div>
+  </div>
 
   <!-- === GAME OVER OVERLAY === -->
   <!-- (added in Task 6) -->
@@ -66,7 +96,30 @@
     "use strict";
 
     // === STATE ===
-    // (added in Task 4)
+    const SQUARE_SIZE      = 80;
+    const HUD_HEIGHT       = 56;
+    const AIRTIME_BUDGET   = 2000;
+    const INITIAL_DWELL    = 2000;
+    const ANTI_CHEESE_DIST = 150;
+
+    const state = {
+      phase: "idle",          // "idle" | "playing" | "gameover"
+      square: { x: 0, y: 0, w: SQUARE_SIZE, h: SQUARE_SIZE },
+      mouse:  { x: -1, y: -1 },
+      dwellMs: INITIAL_DWELL,
+      dwellProgressMs: 0,
+      airTimeUsedMs: 0,
+      score: 0,
+    };
+
+    const el = {
+      square:   null,
+      fill:     null,
+      score:    null,
+      airfill:  null,
+      airlabel: null,
+      dwellreq: null,
+    };
 
     // === PURE HELPERS ===
     function decayDwell(currentMs) {
@@ -159,19 +212,59 @@
     }
 
     // === RENDER ===
-    // (added in Task 3)
+    function renderSquare() {
+      el.square.style.left = state.square.x + "px";
+      el.square.style.top  = state.square.y + "px";
+    }
+
+    function renderHUD() {
+      el.score.textContent    = "Score: " + state.score;
+      el.airlabel.textContent = formatSecondsLeft(state.airTimeUsedMs, AIRTIME_BUDGET);
+      el.dwellreq.textContent = "Next: " + state.dwellMs + "ms";
+      const remaining = Math.max(0, AIRTIME_BUDGET - state.airTimeUsedMs);
+      const pct = remaining / AIRTIME_BUDGET;
+      el.airfill.style.width = (pct * 100) + "%";
+      // Color: green > 50%, yellow 20–50%, red < 20%.
+      el.airfill.style.background = pct > 0.5 ? "#4ade80" : pct > 0.2 ? "#facc15" : "#ef4444";
+    }
+
+    function renderDwellFill() {
+      const pct = state.dwellMs === 0 ? 0 : state.dwellProgressMs / state.dwellMs;
+      el.fill.style.height = Math.min(100, pct * 100) + "%";
+    }
+
+    function renderHoverClass(hovering) {
+      el.square.classList.toggle("hovering", hovering);
+    }
 
     // === GAME LOOP ===
     // (added in Task 4)
 
     // === INPUT ===
-    // (added in Task 3)
+    function attachInput() {
+      document.addEventListener("mousemove", (ev) => {
+        state.mouse.x = ev.clientX;
+        state.mouse.y = ev.clientY;
+      });
+    }
 
     // === INIT ===
-    if (!runSelfTests()) {
-      // Self-tests failed; abort init.
-    } else {
-      // Real init wired up in Task 3.
+    if (runSelfTests()) {
+      el.square   = document.getElementById("square");
+      el.fill     = document.getElementById("fill");
+      el.score    = document.getElementById("score");
+      el.airfill  = document.getElementById("airfill");
+      el.airlabel = document.getElementById("airlabel");
+      el.dwellreq = document.getElementById("dwellreq");
+
+      // Place square in center of playfield (below HUD).
+      state.square.x = Math.floor((window.innerWidth - SQUARE_SIZE) / 2);
+      state.square.y = HUD_HEIGHT + Math.floor((window.innerHeight - HUD_HEIGHT - SQUARE_SIZE) / 2);
+
+      renderSquare();
+      renderHUD();
+      renderDwellFill();
+      attachInput();
     }
   </script>
 </body>
