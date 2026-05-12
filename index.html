@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mouse Revenge</title>
+  <style>
+    /* === BASE === */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #111;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* === HUD === */
+    #hud {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 20px;
+      background: rgba(0, 0, 0, 0.4);
+      border-bottom: 1px solid #222;
+      z-index: 10;
+    }
+    #score    { flex: 0 0 auto; font-size: 22px; font-weight: 600; }
+    #airwrap  { flex: 1 1 auto; display: flex; align-items: center; gap: 10px; }
+    #airbar   { flex: 1 1 auto; height: 14px; background: #222; border-radius: 7px; overflow: hidden; }
+    #airfill  { height: 100%; width: 100%; background: #4ade80; transition: background 120ms linear; }
+    #airlabel { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-size: 14px; opacity: 0.85; min-width: 70px; text-align: right; }
+    #dwellreq { flex: 0 0 auto; font-size: 14px; opacity: 0.85; font-variant-numeric: tabular-nums; }
+
+    /* === SQUARE === */
+    /* (added in Task 3) */
+
+    /* === OVERLAY === */
+    /* (added in Task 6) */
+  </style>
+</head>
+<body>
+  <!-- === HUD === -->
+  <div id="hud">
+    <div id="score">Score: 0</div>
+    <div id="airwrap">
+      <div id="airbar"><div id="airfill"></div></div>
+      <div id="airlabel">2.00s left</div>
+    </div>
+    <div id="dwellreq">Next: 2000ms</div>
+  </div>
+
+  <!-- === PLAYFIELD === -->
+  <div id="playfield"></div>
+
+  <!-- === GAME OVER OVERLAY === -->
+  <!-- (added in Task 6) -->
+
+  <script>
+    "use strict";
+
+    // === STATE ===
+    // (added in Task 4)
+
+    // === PURE HELPERS ===
+    // (added in Task 2)
+
+    // === RENDER ===
+    // (added in Task 3)
+
+    // === GAME LOOP ===
+    // (added in Task 4)
+
+    // === INPUT ===
+    // (added in Task 3)
+
+    // === INIT ===
+    // (added in Task 3)
+  </script>
+</body>
+</html>
