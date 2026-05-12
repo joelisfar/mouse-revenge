@@ -371,6 +371,18 @@
       document.getElementById("playagain").addEventListener("click", () => {
         resetGame();
       });
+      window.addEventListener("resize", () => {
+        // Keep square fully on-screen and below the HUD after a resize.
+        const maxX = Math.max(0, window.innerWidth - SQUARE_SIZE);
+        const maxY = Math.max(HUD_HEIGHT, window.innerHeight - SQUARE_SIZE);
+        state.square.x = Math.min(state.square.x, maxX);
+        state.square.y = Math.max(HUD_HEIGHT, Math.min(state.square.y, maxY));
+        renderSquare();
+      });
+      document.addEventListener("mouseleave", () => {
+        state.mouse.x = -1;
+        state.mouse.y = -1;
+      });
     }
 
     // === INIT ===
