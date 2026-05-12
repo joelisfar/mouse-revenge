@@ -69,7 +69,40 @@
     }
 
     /* === OVERLAY === */
-    /* (added in Task 6) */
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      z-index: 20;
+    }
+    #overlay[hidden] { display: none; }
+    #overlay h1 {
+      margin: 0;
+      font-size: 36px;
+      font-weight: 700;
+    }
+    #overlay .score {
+      font-size: 22px;
+      opacity: 0.9;
+    }
+    #overlay button {
+      font: inherit;
+      font-size: 16px;
+      font-weight: 600;
+      padding: 12px 24px;
+      background: #ff5b5b;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    #overlay button:hover { filter: brightness(1.1); }
+    #square.dimmed { opacity: 0.35; }
   </style>
 </head>
 <body>
@@ -90,7 +123,11 @@
   </div>
 
   <!-- === GAME OVER OVERLAY === -->
-  <!-- (added in Task 6) -->
+  <div id="overlay" hidden>
+    <h1>Game over.</h1>
+    <div class="score">Score: <span id="finalscore">0</span></div>
+    <button id="playagain">Play again</button>
+  </div>
 
   <script>
     "use strict";
@@ -258,6 +295,32 @@
       renderSquare();
     }
 
+    function onGameOver() {
+      state.phase = "gameover";
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+      document.getElementById("finalscore").textContent = state.score;
+      document.getElementById("overlay").hidden = false;
+      el.square.classList.add("dimmed");
+      renderHoverClass(false);
+    }
+
+    function resetGame() {
+      state.phase = "idle";
+      state.score = 0;
+      state.dwellMs = INITIAL_DWELL;
+      state.dwellProgressMs = 0;
+      state.airTimeUsedMs = 0;
+      state.square.x = Math.floor((window.innerWidth - SQUARE_SIZE) / 2);
+      state.square.y = HUD_HEIGHT + Math.floor((window.innerHeight - HUD_HEIGHT - SQUARE_SIZE) / 2);
+      document.getElementById("overlay").hidden = true;
+      document.getElementById("subtitle").style.display = "";
+      el.square.classList.remove("dimmed");
+      renderSquare();
+      renderHUD();
+      renderDwellFill();
+    }
+
     function tick(now) {
       const dt = lastFrame === 0 ? 0 : Math.min(100, now - lastFrame);
       lastFrame = now;
@@ -274,7 +337,11 @@
         } else {
           state.dwellProgressMs = 0;
           state.airTimeUsedMs = Math.min(AIRTIME_BUDGET, state.airTimeUsedMs + dt);
-          // Game-over handling lands in Task 6.
+          if (state.airTimeUsedMs >= AIRTIME_BUDGET) {
+            renderHUD();
+            onGameOver();
+            return;
+          }
         }
 
         renderDwellFill();
@@ -300,6 +367,9 @@
         if (state.phase === "idle" && isInside(state.mouse.x, state.mouse.y, state.square)) {
           startPlaying();
         }
+      });
+      document.getElementById("playagain").addEventListener("click", () => {
+        resetGame();
       });
     }
 
