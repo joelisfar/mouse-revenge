@@ -69,7 +69,94 @@
     // (added in Task 4)
 
     // === PURE HELPERS ===
-    // (added in Task 2)
+    function decayDwell(currentMs) {
+      return Math.max(200, currentMs - 100);
+    }
+
+    function isInside(x, y, rect) {
+      return x >= rect.x && x <= rect.x + rect.w &&
+             y >= rect.y && y <= rect.y + rect.h;
+    }
+
+    function formatSecondsLeft(usedMs, budgetMs) {
+      const remaining = Math.max(0, budgetMs - usedMs);
+      return (remaining / 1000).toFixed(2) + "s left";
+    }
+
+    function chooseTeleportPosition(viewport, squareSize, cursor, minDistance, hudHeight, rng) {
+      const maxX = viewport.w - squareSize;
+      const maxY = viewport.h - squareSize;
+      const minY = hudHeight;
+      let best = null;
+      let bestDist = -1;
+      for (let i = 0; i < 10; i++) {
+        const x = Math.floor(rng() * (maxX + 1));
+        const y = minY + Math.floor(rng() * (maxY - minY + 1));
+        const cx = x + squareSize / 2;
+        const cy = y + squareSize / 2;
+        const dx = cx - cursor.x;
+        const dy = cy - cursor.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist >= minDistance) {
+          return { x, y };
+        }
+        if (dist > bestDist) {
+          best = { x, y };
+          bestDist = dist;
+        }
+      }
+      return best;
+    }
+
+    function runSelfTests() {
+      const failures = [];
+      function assert(cond, msg) { if (!cond) failures.push(msg); }
+
+      // decayDwell
+      assert(decayDwell(2000) === 1900, "decayDwell(2000) should be 1900");
+      assert(decayDwell(300) === 200,   "decayDwell(300) should clamp to 200");
+      assert(decayDwell(200) === 200,   "decayDwell(200) should stay at 200");
+
+      // isInside
+      const rect = { x: 100, y: 100, w: 80, h: 80 };
+      assert(isInside(140, 140, rect) === true,  "point inside should be true");
+      assert(isInside(99, 140, rect) === false,  "point left of rect should be false");
+      assert(isInside(181, 140, rect) === false, "point right of rect should be false");
+      assert(isInside(100, 100, rect) === true,  "top-left corner should be inside (inclusive)");
+      assert(isInside(180, 180, rect) === true,  "bottom-right corner should be inside (inclusive)");
+
+      // formatSecondsLeft
+      assert(formatSecondsLeft(0, 2000)    === "2.00s left", "full budget should be 2.00s left");
+      assert(formatSecondsLeft(570, 2000)  === "1.43s left", "570ms used should be 1.43s left");
+      assert(formatSecondsLeft(2000, 2000) === "0.00s left", "exhausted budget should be 0.00s left");
+      assert(formatSecondsLeft(2500, 2000) === "0.00s left", "over-budget should clamp to 0.00s left");
+
+      // chooseTeleportPosition: deterministic RNG
+      // Far cursor — first sample should satisfy distance check.
+      let pos = chooseTeleportPosition({ w: 1000, h: 800 }, 80, { x: 900, y: 700 }, 150, 56, () => 0);
+      assert(pos.x === 0 && pos.y === 56, "with rng()=0 and far cursor, top-left should be (0, 56)");
+
+      // Picks a position fully on-screen.
+      pos = chooseTeleportPosition({ w: 1000, h: 800 }, 80, { x: 500, y: 400 }, 150, 56, Math.random);
+      assert(pos.x >= 0 && pos.x <= 920, "x must be in [0, viewport.w - squareSize]");
+      assert(pos.y >= 56 && pos.y <= 720, "y must be in [hudHeight, viewport.h - squareSize]");
+
+      // Tiny viewport where no candidate can possibly satisfy minDistance — should still return a position.
+      // Viewport just barely fits the square; cursor at center => every candidate is closer than 150.
+      pos = chooseTeleportPosition({ w: 100, h: 100 }, 80, { x: 50, y: 50 }, 150, 0, Math.random);
+      assert(pos !== null && pos.x >= 0 && pos.x <= 20 && pos.y >= 0 && pos.y <= 20,
+        "tiny viewport should still yield a valid in-bounds position");
+
+      if (failures.length > 0) {
+        console.error("Self-tests FAILED:", failures);
+        document.body.innerHTML = '<div style="padding:40px;color:#ff5b5b;font-family:monospace;">' +
+          '<h2>Self-tests failed — game will not start.</h2><ul>' +
+          failures.map(f => '<li>' + f + '</li>').join('') + '</ul></div>';
+        return false;
+      }
+      console.log("Self-tests passed (" + 16 + " assertions).");
+      return true;
+    }
 
     // === RENDER ===
     // (added in Task 3)
@@ -81,7 +168,11 @@
     // (added in Task 3)
 
     // === INIT ===
-    // (added in Task 3)
+    if (!runSelfTests()) {
+      // Self-tests failed; abort init.
+    } else {
+      // Real init wired up in Task 3.
+    }
   </script>
 </body>
 </html>
