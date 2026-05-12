@@ -241,8 +241,25 @@
     let lastFrame = 0;
     let rafId = 0;
 
+    function onCatch() {
+      state.score += 1;
+      state.dwellMs = decayDwell(state.dwellMs);
+      state.dwellProgressMs = 0;
+      const pos = chooseTeleportPosition(
+        { w: window.innerWidth, h: window.innerHeight },
+        SQUARE_SIZE,
+        state.mouse,
+        ANTI_CHEESE_DIST,
+        HUD_HEIGHT,
+        Math.random
+      );
+      state.square.x = pos.x;
+      state.square.y = pos.y;
+      renderSquare();
+    }
+
     function tick(now) {
-      const dt = lastFrame === 0 ? 0 : now - lastFrame;
+      const dt = lastFrame === 0 ? 0 : Math.min(100, now - lastFrame);
       lastFrame = now;
 
       if (state.phase === "playing") {
@@ -251,7 +268,9 @@
 
         if (inside) {
           state.dwellProgressMs += dt;
-          // Catch handling lands in Task 5.
+          if (state.dwellProgressMs >= state.dwellMs) {
+            onCatch();
+          }
         } else {
           state.dwellProgressMs = 0;
           state.airTimeUsedMs = Math.min(AIRTIME_BUDGET, state.airTimeUsedMs + dt);
