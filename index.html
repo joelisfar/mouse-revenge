@@ -238,13 +238,49 @@
     }
 
     // === GAME LOOP ===
-    // (added in Task 4)
+    let lastFrame = 0;
+    let rafId = 0;
+
+    function tick(now) {
+      const dt = lastFrame === 0 ? 0 : now - lastFrame;
+      lastFrame = now;
+
+      if (state.phase === "playing") {
+        const inside = isInside(state.mouse.x, state.mouse.y, state.square);
+        renderHoverClass(inside);
+
+        if (inside) {
+          state.dwellProgressMs += dt;
+          // Catch handling lands in Task 5.
+        } else {
+          state.dwellProgressMs = 0;
+          state.airTimeUsedMs = Math.min(AIRTIME_BUDGET, state.airTimeUsedMs + dt);
+          // Game-over handling lands in Task 6.
+        }
+
+        renderDwellFill();
+        renderHUD();
+      }
+
+      rafId = requestAnimationFrame(tick);
+    }
+
+    function startPlaying() {
+      if (state.phase !== "idle") return;
+      state.phase = "playing";
+      document.getElementById("subtitle").style.display = "none";
+      lastFrame = 0;
+      rafId = requestAnimationFrame(tick);
+    }
 
     // === INPUT ===
     function attachInput() {
       document.addEventListener("mousemove", (ev) => {
         state.mouse.x = ev.clientX;
         state.mouse.y = ev.clientY;
+        if (state.phase === "idle" && isInside(state.mouse.x, state.mouse.y, state.square)) {
+          startPlaying();
+        }
       });
     }
 
