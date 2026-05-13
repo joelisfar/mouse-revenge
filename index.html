@@ -74,6 +74,28 @@
       60%  { transform: scale(0.92) rotate(3deg);  }
       100% { transform: scale(1)    rotate(0);    }
     }
+    /* Charging/dim phase: outline only. Pulse + white border only while cursor is inside. */
+    #square.charging {
+      background: transparent;
+      border: 2px solid #ff5b5b;
+    }
+    #square.charging.hovering {
+      border-color: #fff;
+      animation: charging-pulse 500ms ease-in-out infinite;
+    }
+    #square.teleporting.charging.hovering {
+      animation: jiggle 250ms ease-out, charging-pulse 500ms ease-in-out infinite;
+    }
+    @keyframes charging-pulse {
+      0%, 100% {
+        box-shadow: 0 4px 20px rgba(255, 91, 91, 0.3),
+                    inset 0 0 16px rgba(255, 220, 150, 0.45);
+      }
+      50% {
+        box-shadow: 0 4px 20px rgba(255, 91, 91, 0.3),
+                    inset 0 0 24px rgba(255, 220, 150, 0.85);
+      }
+    }
     #square > #fill {
       position: absolute;
       left: 0;
@@ -140,9 +162,9 @@
     <div id="score">Score: 0</div>
     <div id="airwrap">
       <div id="airbar"><div id="airfill"></div></div>
-      <div id="airlabel">10.00s left</div>
+      <div id="airlabel">5.00s left</div>
     </div>
-    <div id="dwellreq">Next: 2000ms</div>
+    <div id="dwellreq">Next: 600ms</div>
   </div>
 
   <!-- === PLAYFIELD === -->
@@ -150,8 +172,8 @@
   <!-- Square is a sibling of the playfield (not a child), so its position is in viewport coords. -->
   <div id="square"><div id="fill"></div></div>
   <div id="subtitle">
-    <span class="hover-cue">Hover the square to start. Don't let it escape for more than 10 seconds total.</span>
-    <span class="tap-cue">Tap and hold the square to start. Don't let it escape for more than 10 seconds total.</span>
+    <span class="hover-cue">Hover the square to start. Don't let it escape for more than 5 seconds total.</span>
+    <span class="tap-cue">Tap and hold the square to start. Don't let it escape for more than 5 seconds total.</span>
   </div>
 
   <!-- === GAME OVER OVERLAY === -->
@@ -166,8 +188,8 @@
 
     // === STATE ===
     const HUD_HEIGHT     = 56;
-    const AIRTIME_BUDGET = 10000;
-    const INITIAL_DWELL  = 2000;
+    const AIRTIME_BUDGET = 5000;
+    const INITIAL_DWELL  = 600;
     // Playfield is always a 2:3 rectangle. Long side runs with the viewport's long side:
     // landscape viewports get a 3:2 (wider-than-tall) field; portrait viewports get a 2:3 (taller-than-wide) field.
 
@@ -184,6 +206,13 @@
       dwellProgressMs: 0,
       airTimeUsedMs: 0,
       score: 0,
+      // Dim/recharge phase: after each catch, charging outline shown for `dimTotalMs`.
+      // Air-time clock is paused; cursor inside refunds air-time (clamped at 0).
+      dimRemainingMs: 0,
+      dimTotalMs: 0,
+      // dimRemainingMs at the moment cursor first entered the square after the last teleport.
+      // Drives chase-speed-dependent decay: high value (fast arrival) → bigger dwell decay.
+      dimRemainingAtArrival: null,
     };
 
     const el = {
@@ -197,9 +226,12 @@
     };
 
     // === PURE HELPERS ===
-    function decayDwell(currentMs) {
-      // Exponential decay: each catch shaves 20% off the dwell requirement, floored at 100ms.
-      return Math.max(100, Math.round(currentMs * 0.8));
+    function decayDwell(currentMs, earlinessRatio) {
+      // Chase-speed decay: loss scales linearly from 5% (arrived after dim end)
+      // to 30% (instant arrival). earlinessRatio is clamped to [0, 1].
+      const r = Math.max(0, Math.min(1, earlinessRatio));
+      const loss = 0.05 + 0.25 * r;
+      return Math.max(0, Math.round(currentMs * (1 - loss)));
     }
 
     function isInside(x, y, rect) {
@@ -242,10 +274,12 @@
       const failures = [];
       function assert(cond, msg) { if (!cond) failures.push(msg); }
 
-      // decayDwell — exponential ×0.8 with 100ms floor.
-      assert(decayDwell(2000) === 1600, "decayDwell(2000) should be 1600");
-      assert(decayDwell(300)  === 240,  "decayDwell(300) should be 240");
-      assert(decayDwell(100)  === 100,  "decayDwell(100) should clamp to 100");
+      // decayDwell — loss scales 5%→30% with earliness (clamped to [0,1]).
+      assert(decayDwell(1000, 0)   === 950, "earliness 0 → 5% loss → 950");
+      assert(decayDwell(1000, 1)   === 700, "earliness 1 → 30% loss → 700");
+      assert(decayDwell(1000, 0.5) === 825, "earliness 0.5 → 17.5% loss → 825");
+      assert(decayDwell(100, 1)    === 70,  "decayDwell(100, 1) should be 70");
+      assert(decayDwell(0, 1)      === 0,   "decayDwell(0, *) should be 0");
 
       // isInside
       const rect = { x: 100, y: 100, w: 80, h: 80 };
@@ -283,7 +317,7 @@
           failures.map(f => '<li>' + f + '</li>').join('') + '</ul></div>';
         return false;
       }
-      console.log("Self-tests passed (" + 16 + " assertions).");
+      console.log("Self-tests passed (" + 18 + " assertions).");
       return true;
     }
 
@@ -371,8 +405,18 @@
 
     function onCatch() {
       state.score += 1;
-      state.dwellMs = decayDwell(state.dwellMs);
+      // Earliness for the chase that just ended: fraction of dim time still remaining
+      // when the cursor first entered the square. 0 if never arrived during dim.
+      const earliness = state.dimTotalMs > 0 && state.dimRemainingAtArrival !== null
+        ? state.dimRemainingAtArrival / state.dimTotalMs
+        : 0;
+      // Save the dwell just achieved → becomes the next dim duration (pre-decay).
+      const dimDuration = state.dwellMs;
+      state.dwellMs = decayDwell(state.dwellMs, earliness);
       state.dwellProgressMs = 0;
+      state.dimTotalMs = dimDuration;
+      state.dimRemainingMs = dimDuration;
+      state.dimRemainingAtArrival = null;
       const pos = chooseTeleportPosition(
         state.playfield,
         SQUARE_SIZE,
@@ -383,6 +427,7 @@
       state.square.x = pos.x;
       state.square.y = pos.y;
       renderSquare(true);
+      el.square.classList.add("charging");
     }
 
     function onGameOver() {
@@ -391,6 +436,7 @@
       rafId = 0;
       document.getElementById("finalscore").textContent = state.score;
       document.getElementById("overlay").hidden = false;
+      el.square.classList.remove("charging");
       el.square.classList.add("dimmed");
       renderHoverClass(false);
     }
@@ -401,11 +447,15 @@
       state.dwellMs = INITIAL_DWELL;
       state.dwellProgressMs = 0;
       state.airTimeUsedMs = 0;
+      state.dimRemainingMs = 0;
+      state.dimTotalMs = 0;
+      state.dimRemainingAtArrival = null;
       computePlayfield();
       centerSquareInPlayfield();
       document.getElementById("overlay").hidden = true;
       document.getElementById("subtitle").style.display = "";
       el.square.classList.remove("dimmed");
+      el.square.classList.remove("charging");
       renderSquare(false);
       renderHUD();
       renderDwellFill();
@@ -419,7 +469,22 @@
         const inside = isInside(state.mouse.x, state.mouse.y, state.square);
         renderHoverClass(inside);
 
-        if (inside) {
+        // First arrival after teleport — locks in earliness for the next decay.
+        if (inside && state.dimRemainingAtArrival === null) {
+          state.dimRemainingAtArrival = state.dimRemainingMs;
+        }
+
+        if (state.dimRemainingMs > 0) {
+          // Dim/recharge phase: clock paused. Cursor inside refunds air-time, clamped at 0.
+          const dimDt = Math.min(dt, state.dimRemainingMs);
+          state.dimRemainingMs -= dimDt;
+          if (inside) {
+            state.airTimeUsedMs = Math.max(0, state.airTimeUsedMs - dimDt);
+          }
+          if (state.dimRemainingMs === 0) {
+            el.square.classList.remove("charging");
+          }
+        } else if (inside) {
           state.dwellProgressMs += dt;
           if (state.dwellProgressMs >= state.dwellMs) {
             onCatch();
