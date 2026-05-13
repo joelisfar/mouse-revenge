@@ -38,19 +38,38 @@
     #airlabel { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-size: 14px; opacity: 0.85; min-width: 70px; text-align: right; }
     #dwellreq { flex: 0 0 auto; font-size: 14px; opacity: 0.85; font-variant-numeric: tabular-nums; }
 
+    /* === PLAYFIELD === */
+    #playfield {
+      position: absolute;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid #1f1f1f;
+      border-radius: 10px;
+    }
+
     /* === SQUARE === */
     #square {
       position: absolute;
-      width: 80px;
-      height: 80px;
       background: #ff5b5b;
       border-radius: 6px;
       box-shadow: 0 4px 20px rgba(255, 91, 91, 0.3);
       transition: filter 80ms linear;
       pointer-events: none; /* hover detection is purely cursor-coords based */
       overflow: hidden;
+      transform-origin: 50% 50%;
     }
     #square.hovering { filter: brightness(1.2); }
+    #square.teleporting {
+      transition: filter 80ms linear,
+                  left 250ms cubic-bezier(0.34, 1.56, 0.64, 1),
+                  top  250ms cubic-bezier(0.34, 1.56, 0.64, 1);
+      animation: jiggle 250ms ease-out;
+    }
+    @keyframes jiggle {
+      0%   { transform: scale(1)    rotate(0);    }
+      30%  { transform: scale(1.15) rotate(-4deg); }
+      60%  { transform: scale(0.92) rotate(3deg);  }
+      100% { transform: scale(1)    rotate(0);    }
+    }
     #square > #fill {
       position: absolute;
       left: 0;
@@ -111,7 +130,7 @@
     <div id="score">Score: 0</div>
     <div id="airwrap">
       <div id="airbar"><div id="airfill"></div></div>
-      <div id="airlabel">2.00s left</div>
+      <div id="airlabel">10.00s left</div>
     </div>
     <div id="dwellreq">Next: 2000ms</div>
   </div>
@@ -119,8 +138,8 @@
   <!-- === PLAYFIELD === -->
   <div id="playfield">
     <div id="square"><div id="fill"></div></div>
-    <div id="subtitle">Hover the square to start. Don't let it escape for more than 2 seconds total.</div>
   </div>
+  <div id="subtitle">Hover the square to start. Don't let it escape for more than 10 seconds total.</div>
 
   <!-- === GAME OVER OVERLAY === -->
   <div id="overlay" hidden>
@@ -133,14 +152,19 @@
     "use strict";
 
     // === STATE ===
-    const SQUARE_SIZE      = 80;
-    const HUD_HEIGHT       = 56;
-    const AIRTIME_BUDGET   = 2000;
-    const INITIAL_DWELL    = 2000;
-    const ANTI_CHEESE_DIST = 150;
+    const HUD_HEIGHT     = 56;
+    const AIRTIME_BUDGET = 10000;
+    const INITIAL_DWELL  = 2000;
+    // Playfield is always a 2:3 rectangle. Long side runs with the viewport's long side:
+    // landscape viewports get a 3:2 (wider-than-tall) field; portrait viewports get a 2:3 (taller-than-wide) field.
+
+    // SQUARE_SIZE and ANTI_CHEESE_DIST scale with the playfield; recomputed on resize.
+    let SQUARE_SIZE      = 80;
+    let ANTI_CHEESE_DIST = 150;
 
     const state = {
       phase: "idle",          // "idle" | "playing" | "gameover"
+      playfield: { x: 0, y: HUD_HEIGHT, w: 0, h: 0 },
       square: { x: 0, y: 0, w: SQUARE_SIZE, h: SQUARE_SIZE },
       mouse:  { x: -1, y: -1 },
       dwellMs: INITIAL_DWELL,
@@ -150,12 +174,13 @@
     };
 
     const el = {
-      square:   null,
-      fill:     null,
-      score:    null,
-      airfill:  null,
-      airlabel: null,
-      dwellreq: null,
+      square:    null,
+      fill:      null,
+      score:     null,
+      airfill:   null,
+      airlabel:  null,
+      dwellreq:  null,
+      playfield: null,
     };
 
     // === PURE HELPERS ===
@@ -173,15 +198,16 @@
       return (remaining / 1000).toFixed(2) + "s left";
     }
 
-    function chooseTeleportPosition(viewport, squareSize, cursor, minDistance, hudHeight, rng) {
-      const maxX = viewport.w - squareSize;
-      const maxY = viewport.h - squareSize;
-      const minY = hudHeight;
+    function chooseTeleportPosition(bounds, squareSize, cursor, minDistance, rng) {
+      const minX = bounds.x;
+      const minY = bounds.y;
+      const rangeX = Math.max(0, bounds.w - squareSize);
+      const rangeY = Math.max(0, bounds.h - squareSize);
       let best = null;
       let bestDist = -1;
       for (let i = 0; i < 10; i++) {
-        const x = Math.floor(rng() * (maxX + 1));
-        const y = minY + Math.floor(rng() * (maxY - minY + 1));
+        const x = minX + Math.floor(rng() * (rangeX + 1));
+        const y = minY + Math.floor(rng() * (rangeY + 1));
         const cx = x + squareSize / 2;
         const cy = y + squareSize / 2;
         const dx = cx - cursor.x;
@@ -223,19 +249,18 @@
 
       // chooseTeleportPosition: deterministic RNG
       // Far cursor — first sample should satisfy distance check.
-      let pos = chooseTeleportPosition({ w: 1000, h: 800 }, 80, { x: 900, y: 700 }, 150, 56, () => 0);
+      let pos = chooseTeleportPosition({ x: 0, y: 56, w: 1000, h: 744 }, 80, { x: 900, y: 700 }, 150, () => 0);
       assert(pos.x === 0 && pos.y === 56, "with rng()=0 and far cursor, top-left should be (0, 56)");
 
-      // Picks a position fully on-screen.
-      pos = chooseTeleportPosition({ w: 1000, h: 800 }, 80, { x: 500, y: 400 }, 150, 56, Math.random);
-      assert(pos.x >= 0 && pos.x <= 920, "x must be in [0, viewport.w - squareSize]");
-      assert(pos.y >= 56 && pos.y <= 720, "y must be in [hudHeight, viewport.h - squareSize]");
+      // Picks a position fully within the bounds.
+      pos = chooseTeleportPosition({ x: 0, y: 56, w: 1000, h: 744 }, 80, { x: 500, y: 400 }, 150, Math.random);
+      assert(pos.x >= 0 && pos.x <= 920, "x must be in [bounds.x, bounds.x + bounds.w - squareSize]");
+      assert(pos.y >= 56 && pos.y <= 720, "y must be in [bounds.y, bounds.y + bounds.h - squareSize]");
 
-      // Tiny viewport where no candidate can possibly satisfy minDistance — should still return a position.
-      // Viewport just barely fits the square; cursor at center => every candidate is closer than 150.
-      pos = chooseTeleportPosition({ w: 100, h: 100 }, 80, { x: 50, y: 50 }, 150, 0, Math.random);
+      // Tiny bounds where no candidate can possibly satisfy minDistance — should still return a position.
+      pos = chooseTeleportPosition({ x: 0, y: 0, w: 100, h: 100 }, 80, { x: 50, y: 50 }, 150, Math.random);
       assert(pos !== null && pos.x >= 0 && pos.x <= 20 && pos.y >= 0 && pos.y <= 20,
-        "tiny viewport should still yield a valid in-bounds position");
+        "tiny bounds should still yield a valid in-bounds position");
 
       if (failures.length > 0) {
         console.error("Self-tests FAILED:", failures);
@@ -249,7 +274,54 @@
     }
 
     // === RENDER ===
-    function renderSquare() {
+    function computePlayfield() {
+      const W = window.innerWidth;
+      const H = Math.max(0, window.innerHeight - HUD_HEIGHT);
+      // 3:2 landscape on landscape viewports, 2:3 portrait on portrait viewports.
+      const aspect = (W >= H) ? (3 / 2) : (2 / 3);
+      let pw, ph;
+      if (H === 0) {
+        pw = W; ph = 0;
+      } else if (W / H > aspect) {
+        ph = H;
+        pw = Math.floor(ph * aspect);
+      } else {
+        pw = W;
+        ph = Math.floor(pw / aspect);
+      }
+      const px = Math.floor((W - pw) / 2);
+      const py = HUD_HEIGHT + Math.floor((H - ph) / 2);
+
+      state.playfield.x = px;
+      state.playfield.y = py;
+      state.playfield.w = pw;
+      state.playfield.h = ph;
+
+      // Square = ~12% of the playfield's smaller dimension; clamped 40–120px.
+      SQUARE_SIZE = Math.max(40, Math.min(120, Math.round(0.12 * Math.min(pw, ph) || 80)));
+      state.square.w = SQUARE_SIZE;
+      state.square.h = SQUARE_SIZE;
+
+      // Anti-cheese scales with square size; floor at 80px.
+      ANTI_CHEESE_DIST = Math.max(80, Math.round(SQUARE_SIZE * 1.5));
+
+      // Update DOM dimensions.
+      el.playfield.style.left   = px + "px";
+      el.playfield.style.top    = py + "px";
+      el.playfield.style.width  = pw + "px";
+      el.playfield.style.height = ph + "px";
+      el.square.style.width     = SQUARE_SIZE + "px";
+      el.square.style.height    = SQUARE_SIZE + "px";
+    }
+
+    function renderSquare(animate) {
+      // Re-trigger the keyframe animation cleanly when animating.
+      el.square.classList.remove("teleporting");
+      if (animate) {
+        // Force reflow so the browser sees the class removal commit before re-add.
+        void el.square.offsetWidth;
+        el.square.classList.add("teleporting");
+      }
       el.square.style.left = state.square.x + "px";
       el.square.style.top  = state.square.y + "px";
     }
@@ -274,6 +346,11 @@
       el.square.classList.toggle("hovering", hovering);
     }
 
+    function centerSquareInPlayfield() {
+      state.square.x = state.playfield.x + Math.floor((state.playfield.w - SQUARE_SIZE) / 2);
+      state.square.y = state.playfield.y + Math.floor((state.playfield.h - SQUARE_SIZE) / 2);
+    }
+
     // === GAME LOOP ===
     let lastFrame = 0;
     let rafId = 0;
@@ -283,16 +360,15 @@
       state.dwellMs = decayDwell(state.dwellMs);
       state.dwellProgressMs = 0;
       const pos = chooseTeleportPosition(
-        { w: window.innerWidth, h: window.innerHeight },
+        state.playfield,
         SQUARE_SIZE,
         state.mouse,
         ANTI_CHEESE_DIST,
-        HUD_HEIGHT,
         Math.random
       );
       state.square.x = pos.x;
       state.square.y = pos.y;
-      renderSquare();
+      renderSquare(true);
     }
 
     function onGameOver() {
@@ -311,12 +387,12 @@
       state.dwellMs = INITIAL_DWELL;
       state.dwellProgressMs = 0;
       state.airTimeUsedMs = 0;
-      state.square.x = Math.floor((window.innerWidth - SQUARE_SIZE) / 2);
-      state.square.y = HUD_HEIGHT + Math.floor((window.innerHeight - HUD_HEIGHT - SQUARE_SIZE) / 2);
+      computePlayfield();
+      centerSquareInPlayfield();
       document.getElementById("overlay").hidden = true;
       document.getElementById("subtitle").style.display = "";
       el.square.classList.remove("dimmed");
-      renderSquare();
+      renderSquare(false);
       renderHUD();
       renderDwellFill();
     }
@@ -372,12 +448,13 @@
         resetGame();
       });
       window.addEventListener("resize", () => {
-        // Keep square fully on-screen and below the HUD after a resize.
-        const maxX = Math.max(0, window.innerWidth - SQUARE_SIZE);
-        const maxY = Math.max(HUD_HEIGHT, window.innerHeight - SQUARE_SIZE);
-        state.square.x = Math.min(state.square.x, maxX);
-        state.square.y = Math.max(HUD_HEIGHT, Math.min(state.square.y, maxY));
-        renderSquare();
+        computePlayfield();
+        // Clamp square inside the new playfield.
+        const maxX = state.playfield.x + state.playfield.w - SQUARE_SIZE;
+        const maxY = state.playfield.y + state.playfield.h - SQUARE_SIZE;
+        state.square.x = Math.max(state.playfield.x, Math.min(state.square.x, maxX));
+        state.square.y = Math.max(state.playfield.y, Math.min(state.square.y, maxY));
+        renderSquare(false);
       });
       document.addEventListener("mouseleave", () => {
         state.mouse.x = -1;
@@ -387,18 +464,18 @@
 
     // === INIT ===
     if (runSelfTests()) {
-      el.square   = document.getElementById("square");
-      el.fill     = document.getElementById("fill");
-      el.score    = document.getElementById("score");
-      el.airfill  = document.getElementById("airfill");
-      el.airlabel = document.getElementById("airlabel");
-      el.dwellreq = document.getElementById("dwellreq");
+      el.square    = document.getElementById("square");
+      el.fill      = document.getElementById("fill");
+      el.score     = document.getElementById("score");
+      el.airfill   = document.getElementById("airfill");
+      el.airlabel  = document.getElementById("airlabel");
+      el.dwellreq  = document.getElementById("dwellreq");
+      el.playfield = document.getElementById("playfield");
 
-      // Place square in center of playfield (below HUD).
-      state.square.x = Math.floor((window.innerWidth - SQUARE_SIZE) / 2);
-      state.square.y = HUD_HEIGHT + Math.floor((window.innerHeight - HUD_HEIGHT - SQUARE_SIZE) / 2);
+      computePlayfield();
+      centerSquareInPlayfield();
 
-      renderSquare();
+      renderSquare(false);
       renderHUD();
       renderDwellFill();
       attachInput();
