@@ -198,8 +198,8 @@
 
     // === PURE HELPERS ===
     function decayDwell(currentMs) {
-      // Exponential decay: each catch shaves 10% off the dwell requirement, floored at 200ms.
-      return Math.max(200, Math.round(currentMs * 0.9));
+      // Exponential decay: each catch shaves 20% off the dwell requirement, floored at 100ms.
+      return Math.max(100, Math.round(currentMs * 0.8));
     }
 
     function isInside(x, y, rect) {
@@ -242,10 +242,10 @@
       const failures = [];
       function assert(cond, msg) { if (!cond) failures.push(msg); }
 
-      // decayDwell — exponential ×0.9 with 200ms floor.
-      assert(decayDwell(2000) === 1800, "decayDwell(2000) should be 1800");
-      assert(decayDwell(300)  === 270,  "decayDwell(300) should be 270");
-      assert(decayDwell(200)  === 200,  "decayDwell(200) should clamp to 200");
+      // decayDwell — exponential ×0.8 with 100ms floor.
+      assert(decayDwell(2000) === 1600, "decayDwell(2000) should be 1600");
+      assert(decayDwell(300)  === 240,  "decayDwell(300) should be 240");
+      assert(decayDwell(100)  === 100,  "decayDwell(100) should clamp to 100");
 
       // isInside
       const rect = { x: 100, y: 100, w: 80, h: 80 };
