@@ -140,7 +140,7 @@
     <div id="score">Score: 0</div>
     <div id="airwrap">
       <div id="airbar"><div id="airfill"></div></div>
-      <div id="airlabel">10.00s left</div>
+      <div id="airlabel">5.00s left</div>
     </div>
     <div id="dwellreq">Next: 2000ms</div>
   </div>
@@ -150,8 +150,8 @@
   <!-- Square is a sibling of the playfield (not a child), so its position is in viewport coords. -->
   <div id="square"><div id="fill"></div></div>
   <div id="subtitle">
-    <span class="hover-cue">Hover the square to start. Don't let it escape for more than 10 seconds total.</span>
-    <span class="tap-cue">Tap and hold the square to start. Don't let it escape for more than 10 seconds total.</span>
+    <span class="hover-cue">Hover the square to start. Don't let it escape for more than 5 seconds total.</span>
+    <span class="tap-cue">Tap and hold the square to start. Don't let it escape for more than 5 seconds total.</span>
   </div>
 
   <!-- === GAME OVER OVERLAY === -->
@@ -166,7 +166,7 @@
 
     // === STATE ===
     const HUD_HEIGHT     = 56;
-    const AIRTIME_BUDGET = 10000;
+    const AIRTIME_BUDGET = 5000;
     const INITIAL_DWELL  = 2000;
     // Playfield is always a 2:3 rectangle. Long side runs with the viewport's long side:
     // landscape viewports get a 3:2 (wider-than-tall) field; portrait viewports get a 2:3 (taller-than-wide) field.
@@ -198,7 +198,8 @@
 
     // === PURE HELPERS ===
     function decayDwell(currentMs) {
-      return Math.max(200, currentMs - 100);
+      // Exponential decay: each catch shaves 10% off the dwell requirement, floored at 200ms.
+      return Math.max(200, Math.round(currentMs * 0.9));
     }
 
     function isInside(x, y, rect) {
@@ -241,10 +242,10 @@
       const failures = [];
       function assert(cond, msg) { if (!cond) failures.push(msg); }
 
-      // decayDwell
-      assert(decayDwell(2000) === 1900, "decayDwell(2000) should be 1900");
-      assert(decayDwell(300) === 200,   "decayDwell(300) should clamp to 200");
-      assert(decayDwell(200) === 200,   "decayDwell(200) should stay at 200");
+      // decayDwell — exponential ×0.9 with 200ms floor.
+      assert(decayDwell(2000) === 1800, "decayDwell(2000) should be 1800");
+      assert(decayDwell(300)  === 270,  "decayDwell(300) should be 270");
+      assert(decayDwell(200)  === 200,  "decayDwell(200) should clamp to 200");
 
       // isInside
       const rect = { x: 100, y: 100, w: 80, h: 80 };
